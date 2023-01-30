@@ -26,7 +26,7 @@ SERVER = "http://localhost:5000"
 
 
 def rm_config():
-    config_file = GAME_DIR / Path("RED", "Content", "Paks", "~mods", "shared", "guiltysync.json")
+    config_file = Path("guiltysync.json")
     config_file.unlink(missing_ok=True)
 
 
@@ -51,31 +51,34 @@ def test_new_group():
     runner = CliRunner()
     result = runner.invoke(cli,
         [
-            "--dir",
-            GAME_DIR,
             "sync",
+            "--game-dir",
+            GAME_DIR,
+            "--server",
             SERVER
         ],
         input = "\n".join(
             [
                 "y",
                 "test",
-                "mike"
+                "mike",
+                "3"
             ]
         )
     )
     assert result.exit_code == 0
 
 
-def test_existing():
+def test_existing_group():
     test_new_group()
 
     runner = CliRunner()
     result = runner.invoke(cli,
         [
-            "--dir",
-            GAME_DIR,
             "sync",
+            "--game-dir",
+            GAME_DIR,
+            "--server",
             SERVER
         ],
         input = "\n".join(
@@ -87,7 +90,7 @@ def test_existing():
     assert result.exit_code == 0
 
 
-def test_new_with_existing():
+def test_new_user_with_existing_group():
     delete_group("test2")
     rm_config()
     
@@ -96,9 +99,10 @@ def test_new_with_existing():
     runner = CliRunner()
     result = runner.invoke(cli,
         [
-            "--dir",
-            GAME_DIR,
             "sync",
+            "--game-dir",
+            GAME_DIR,
+            "--server",
             SERVER
         ],
         input = "\n".join(
@@ -120,9 +124,10 @@ def test_new_local_group_exists_on_remote():
     runner = CliRunner()
     result = runner.invoke(cli,
         [
-            "--dir",
-            GAME_DIR,
             "sync",
+            "--game-dir",
+            GAME_DIR,
+            "--server",
             SERVER
         ],
         input = "\n".join(
@@ -143,9 +148,10 @@ def test_add_same_group_twice():
     runner = CliRunner()
     result = runner.invoke(cli,
         [
-            "--dir",
-            GAME_DIR,
             "sync",
+            "--game-dir",
+            GAME_DIR,
+            "--server",
             SERVER
         ],
         input = "\n".join(
@@ -159,9 +165,10 @@ def test_add_same_group_twice():
     
     result = runner.invoke(cli,
         [
-            "--dir",
-            GAME_DIR,
             "sync",
+            "--game-dir",
+            GAME_DIR,
+            "--server",
             SERVER
         ],
         input = "\n".join(
@@ -184,11 +191,12 @@ def test_multiple_users():
             "member": "steve",
             "mods": {
                 "Strapped Jack-O Thigh Highs": {
-                    "name": "Strapped Jack-O Thigh Highs", "id": "903027"
+                    "name": "Strapped Jack-O Thigh Highs",
+                    "id": "903027"
                 },
-                "Celestial Sin Particles": {
-                    "name": "Celestial Sin Particles",
-                    "id": "928161"
+                "Maskless Jack-O v1.2": {
+                    "name": "Maskless Jack-O v1.2",
+                    "id": "654361"
                 }
             }
         }
@@ -197,23 +205,8 @@ def test_multiple_users():
 
 if __name__ == "__main__":
     # test_new_group()
-    # test_existing()
-    # test_new_with_existing()
+    # test_existing_group()
+    # test_new_user_with_existing_group()
     # test_new_local_group_exists_on_remote()
     # test_add_same_group_twice()
-    # test_multiple_users()
-    requests.put(f"{SERVER}/groups/test/steve", json=
-        {
-            "member": "steve",
-            "mods": {
-                "Strapped Jack-O Thigh Highs": {
-                    "name": "Strapped Jack-O Thigh Highs", "id": "903027"
-                },
-                "Celestial Sin Particles": {
-                    "name": "Celestial Sin Particles",
-                    "id": "928161"
-                }
-            }
-        }
-    )
-    delete_groups()
+    test_multiple_users()

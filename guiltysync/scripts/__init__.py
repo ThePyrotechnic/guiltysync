@@ -15,6 +15,7 @@ guiltysync - Sync Guilty Gear Strive mods
 from collections import defaultdict
 import json
 from pathlib import Path
+import shutil
 import webbrowser
 
 import click
@@ -32,6 +33,26 @@ def print_mods(mods):
 
 def check_server(server):
     requests.get(server).raise_for_status()
+
+
+def create_group(server, group_name, nickname, mods):
+    res = requests.post(f"{server}/groups/{group_name}",
+        json={
+            "member": nickname,
+            "mods": {mod_name: {"name": mod_name, "id": data["id"]} for mod_name, data in mods.items() if data["external"] is False}
+        }
+    )
+    res.raise_for_status()
+
+
+def update_user(server, group_config, mods):
+    res = requests.put(f"{server}/groups/{group_config['name']}/{group_config['nickname']}",
+        json={
+            "member": group_config["nickname"],
+            "mods": {mod_name: {"name": mod_name, "id": data["id"]} for mod_name, data in mods.items() if data["external"] is False}
+        }
+    )
+    res.raise_for_status()
 
 
 def print_list_options(l):
@@ -55,7 +76,7 @@ def prompt_launch(success = False):
     return False
 
 
-def scan_mods(shared_dir):
+def scan_mods(game_dir, shared_dir):
     mods = defaultdict(dict)
 
     for file_ in shared_dir.glob("**/*"):
@@ -69,16 +90,24 @@ def scan_mods(shared_dir):
             # Need to chop off ID suffix (pathlib does not do this)
             # [1:] gets rid of leading period character in ID
             # Don't want to split entire filename because mod name may have a period in it
-            mods[file_.stem.split(".")[0]]["id"] = file_.suffixes[0][1:]
+            filename, id_, _ = file_.name.rsplit(".", maxsplit=2)
+            mods[filename]["id"] = id_
 
     invalid_mods = []
-    for mod, mod_info in mods.items():
+    for mod_name, mod_info in mods.items():
         required_keys = ["pak", "sig", "id"]
         for key in required_keys:
             if not mod_info.get(key):
-                click.echo(f"WARNING: Mod '{mod}' is missing '{key}' file. Skipping mod")
-                invalid_mods.append(mod)
-                break
+                if key == "sig":  # Try to fix missing .sig
+                    relative_sig_filepath = mods[mod_name]["parent_dir"] / Path(f"{mod_name}.sig")
+                    sig_filepath = shared_dir / relative_sig_filepath
+                    game_sig_filepath = game_dir / Path("RED", "Content", "Paks", "pakchunk0-WindowsNoEditor.sig")
+                    shutil.copy(game_sig_filepath, sig_filepath)
+                    mod_info["key"] = relative_sig_filepath
+                else:
+                    click.echo(f"WARNING: Mod '{mod_name}' is missing '{key}' file. Skipping mod")
+                    invalid_mods.append(mod_name)
+                    break
     for invalid_mod in invalid_mods:
         del mods[invalid_mod]
     
@@ -116,7 +145,7 @@ def show_group_info(client_config, mods, group_name, group_data):
     return to_be_downloaded, to_be_removed
 
 
-def handle_mods(server, shared_dir, client_config, mods, group_config):
+def handle_mods(server, game_dir, shared_dir, client_config, mods, group_config):
     group_data = requests.get(f"{server}/groups/{group_config['name']}").json()
 
     to_be_downloaded, to_be_removed = show_group_info(client_config, mods, group_config['name'], group_data)
@@ -163,7 +192,7 @@ def handle_mods(server, shared_dir, client_config, mods, group_config):
             mod_data["parent_dir"].unlink()
 
     if changes_required:  # Don't print list again unless something happened
-        mods = scan_mods(shared_dir)
+        mods = scan_mods(game_dir, shared_dir)
         show_group_info(client_config, mods, group_config['name'], group_data)
     
     return mods
@@ -196,15 +225,17 @@ def sync(game_dir, server):
     with open(client_config_filepath, "r", encoding="UTF-8") as client_config_file:
         client_config = json.load(client_config_file)
 
-    game_dir = client_config["defaults"].get("game_dir")
     if game_dir is None:
-        game_dir = click.prompt("Input your game directory (The folder with GGST.exe in it)")
+        game_dir = client_config["defaults"].get("game_dir")
+        if game_dir is None:
+            game_dir = click.prompt("Input your game directory (The folder with GGST.exe in it)")
     game_dir = Path(game_dir)
     client_config["defaults"]["game_dir"] = game_dir.as_posix()
 
-    server = client_config["defaults"].get("server")
     if server is None:
-        server = click.prompt("Input the sync server that you want to connect to")
+        server = client_config["defaults"].get("server")
+        if server is None:
+            server = click.prompt("Input the sync server that you want to connect to")
     client_config["defaults"]["server"] = server
     
     write_config(client_config_filepath, client_config)
@@ -231,7 +262,7 @@ def sync(game_dir, server):
             click.echo("Quitting...")
             exit(1)
 
-    mods = scan_mods(shared_dir)
+    mods = scan_mods(game_dir, shared_dir)
 
     print_mods(mods)
     click.echo()
@@ -270,13 +301,7 @@ def sync(game_dir, server):
         nickname = click.prompt("Create a nickname for yourself in this group")
         client_config["groups"][group_name] = {"name": group_name, "nickname": nickname}
         try:
-            res = requests.post(f"{server}/groups/{group_name}",
-                json={
-                    "member": nickname,
-                    "mods": {mod_name: {"name": mod_name, "id": data["id"]} for mod_name, data in mods.items() if data["external"] is False}
-                }
-            )
-            res.raise_for_status()
+            create_group(server, group_name, nickname, mods)
         except HTTPError as e:
             if e.response.status_code == 409:
                 click.echo("Found an existing group")
@@ -287,13 +312,7 @@ def sync(game_dir, server):
                     raise click.ClickException("An error occurred while creating a new group")
     try:
         group_config = client_config["groups"][group_name]
-        res = requests.put(f"{server}/groups/{group_config['name']}/{group_config['nickname']}",
-            json={
-                "member": group_config["nickname"],
-                "mods": {mod_name: {"name": mod_name, "id": data["id"]} for mod_name, data in mods.items() if data["external"] is False}
-            }
-        )
-        res.raise_for_status()
+        update_user(server, group_config, mods)
     except HTTPError as e:
         if e.response.status_code == 404:
             del client_config["groups"][group_config["name"]]
@@ -306,15 +325,19 @@ def sync(game_dir, server):
 
     write_config(client_config_filepath, client_config)
 
-    mods = handle_mods(server, shared_dir, client_config, mods, group_config)
+    mods = handle_mods(server, game_dir, shared_dir, client_config, mods, group_config)
 
     while True:
-        print_list_options(["Refresh...", "Launch GGST"])
+        print_list_options(["Refresh...", "Launch GGST", "Quit"])
         choice = click.prompt("Choose an option", type=int) - 1
         if choice == 0:
-            mods = handle_mods(server, shared_dir, client_config, mods, group_config)
+            mods = scan_mods(game_dir, shared_dir)
+            update_user(server, group_config, mods)
+            mods = handle_mods(server, game_dir, shared_dir, client_config, mods, group_config)
         elif choice == 1:
             launch_game()
+            exit(0)
+        elif choice == 2:
             exit(0)
 
 
