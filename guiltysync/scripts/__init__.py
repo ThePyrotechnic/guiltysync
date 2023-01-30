@@ -312,4 +312,4 @@ cli.add_command(server)
 
 if __name__ == "__main__":
     import sys
-    cli(*sys.argv)
+    cli(sys.argv[1:])

@@ -13,7 +13,6 @@ guiltysync - Sync Guilty Gear Strive mods
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 from setuptools import setup, find_packages
-import py2exe
 
 
 setup(
@@ -30,7 +29,7 @@ setup(
     ],
     extras_require={
         "exe": [
-            "py2exe"
+            "pyinstaller"
         ]
     },
     entry_points={
@@ -38,5 +37,4 @@ setup(
             "guiltysync = guiltysync.scripts:cli",
         ],
     },
-    console=["guiltysync/scripts/__init__.py"],
 )
