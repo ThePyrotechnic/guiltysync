@@ -1,3 +1,17 @@
+"""
+guiltysync - Sync Guilty Gear Strive mods
+    Copyright (C) 2023  Michael Manis - michaelmanis@tutanota.com
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Affero General Public License as published
+    by the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Affero General Public License for more details.
+    You should have received a copy of the GNU Affero General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
 from collections import defaultdict
 import json
 from typing import Dict, List
@@ -18,13 +32,28 @@ def write_config(config_path, config_data):
     with open(config_path, "w", encoding="UTF-8") as config_file:
         json.dump(config_data, config_file)
 
-def ping():
-    return
-
 
 class UserData(BaseModel):
     member: str
     mods: Dict[str, Dict[str, str]]
+
+
+def ping():
+    return
+
+
+def delete_group(group: str):
+    if not group in config["groups"]:
+        raise(HTTPException(status_code=404, detail="Group not found"))
+    del config["groups"][group]
+
+    write_config(config_filepath, config)
+
+
+def delete_groups():
+    config["groups"] = {}
+
+    write_config(config_filepath, config)
 
 
 def post_group(group: str, user_data: UserData):
@@ -65,10 +94,11 @@ def server(host, port, config_path):
         config = json.load(config_file)
 
     app = FastAPI()
-
-    app.add_api_route("/groups/{group}", post_group, methods=["POST"])
-    app.add_api_route("/groups/{group}/{member}", post_group_member, methods=["PUT"])
-    app.add_api_route("/groups/{group}", get_group, methods=["GET"])
     app.add_api_route("/", ping, methods=["GET"])
+    app.add_api_route("/groups", delete_groups, methods=["DELETE"])
+    app.add_api_route("/groups/{group}", get_group, methods=["GET"])
+    app.add_api_route("/groups/{group}", post_group, methods=["POST"])
+    app.add_api_route("/groups/{group}", delete_group, methods=["DELETE"])
+    app.add_api_route("/groups/{group}/{member}", post_group_member, methods=["PUT"])
 
     uvicorn.run(app, host=host, port=port)

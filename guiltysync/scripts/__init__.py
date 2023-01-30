@@ -1,6 +1,21 @@
+"""
+guiltysync - Sync Guilty Gear Strive mods
+    Copyright (C) 2023  Michael Manis - michaelmanis@tutanota.com
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Affero General Public License as published
+    by the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Affero General Public License for more details.
+    You should have received a copy of the GNU Affero General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
 from collections import defaultdict
 import json
 from pathlib import Path
+import webbrowser
 
 import click
 import requests
@@ -19,7 +34,7 @@ def check_server(server):
     try:
         requests.get(server).raise_for_status()
     except HTTPError:
-        raise ClickException("Unable to reach sync server")
+        raise click.ClickException("Unable to reach sync server")
 
 
 def print_list_options(l):
@@ -30,6 +45,78 @@ def print_list_options(l):
 def write_config(path, config_data):
     with open(path, "w", encoding="UTF-8") as client_config_file:
         json.dump(config_data, client_config_file)
+
+
+def launch_game():
+    webbrowser.open("steam://run/1384160")
+
+
+def prompt_launch(ctx, success = False):
+    if click.confirm(f"Do you want to launch the game{'' if success else ' anyway'}?"):
+        launch_game()
+        ctx.exit(0)
+    return False
+
+
+def scan_mods(shared_dir):
+    mods = defaultdict(dict)
+
+    for file_ in shared_dir.glob("**/*"):
+        if file_.suffix == ".pak":
+            mods[file_.stem]["parent_dir"] = file_.parent
+            mods[file_.stem]["external"] = file_.parts[-3] == "external"
+            mods[file_.stem]["pak"] = file_
+        elif file_.suffix == ".sig":
+            mods[file_.stem]["sig"] = file_
+        elif file_.suffix == ".id":
+            # Need to chop off ID suffix (pathlib does not do this)
+            # [1:] gets rid of leading period character in ID
+            # Don't want to split entire filename because mod name may have a period in it
+            mods[file_.stem.split(".")[0]]["id"] = file_.suffixes[0][1:]
+
+    invalid_mods = []
+    for mod, mod_info in mods.items():
+        required_keys = ["pak", "sig", "id"]
+        for key in required_keys:
+            if not mod_info.get(key):
+                click.echo(f"WARNING: Mod '{mod}' is missing '{key}' file. Skipping mod")
+                invalid_mods.append(mod)
+                break
+    for invalid_mod in invalid_mods:
+        del mods[invalid_mod]
+    
+    return mods
+
+
+def show_group_info(client_config, mods, group_name, group_data):
+    to_be_downloaded = {}
+    to_be_removed = {mod_name: mod_data for mod_name, mod_data in mods.items() if mod_data["external"]}
+    click.echo("Current group data:")
+    for user, their_mods in group_data.items():
+        if user == client_config["groups"][group_name]["nickname"]:
+            continue
+        click.echo(f"{user}:")
+        for mod_name, mod_data in their_mods.items():
+            if mod_name in mods:
+                try:
+                    del to_be_removed[mod_name]
+                except KeyError:
+                    pass
+                status = "✅"
+            else:
+                status = "🔄"
+                to_be_downloaded[mod_name] = mod_data
+
+            click.echo(f"\t{status} {mod_name}")
+
+    click.echo(f"{client_config['groups'][group_name]['nickname']}:")
+    for mod_name in mods.keys():
+        if mod_name in to_be_removed.keys():
+            click.echo(f"\t❌ {mod_name}")
+        else:
+            click.echo(f"\t✅ {mod_name}")
+
+    return to_be_downloaded, to_be_removed
 
 
 @click.option("--dir")
@@ -52,13 +139,15 @@ def sync(ctx, server, group):
     
     mod_root = game_dir / Path("RED", "Content", "Paks")
     if (not mod_root.exists()):
-        raise click.ClickException("Invalid game directory")
+        click.echo("Invalid game directory")
+        if not prompt_launch(ctx):
+            raise click.ClickException("Invalid game directory")
 
     mod_dir = mod_root / Path("~mods")    
     if (not mod_dir.exists()):
         if(click.confirm("Mod folder does not exist (~mods). Do you want to create it?")):
             mod_dir.mkdir()
-        else:
+        elif not prompt_launch(ctx):
             click.echo("Quitting...")
             ctx.exit(1)
     
@@ -66,33 +155,11 @@ def sync(ctx, server, group):
     if (not shared_dir.exists()):
         if (click.confirm("shared folder does not exist (~mods/shared). Do you want to create it?")):
             shared_dir.mkdir()
-        else:
+        elif not prompt_launch(ctx):
             click.echo("Quitting...")
             ctx.exit(1)
 
-    mods = defaultdict(dict)
-
-    for file_ in shared_dir.glob("**/*"):
-        if file_.suffix == ".pak":
-            mods[file_.stem]["pak"] = file_
-        elif file_.suffix == ".sig":
-            mods[file_.stem]["sig"] = file_
-        elif file_.suffix == ".id":
-            # Need to chop off ID suffix (pathlib does not do this)
-            # [1:] gets rid of leading period character in ID
-            # Don't want to split entire filename because mod name may have a period in it
-            mods[file_.stem.split(".")[0]]["id"] = file_.suffixes[0][1:]
-
-    for mod, mod_info in mods.items():
-        required_keys = ["pak", "sig", "id"]
-        keys_found = True
-        for key in required_keys:
-            if not mod_info.get(key):
-                click.echo(f"WARNING: Mod '{mod}' is missing '{key}' file. Skipping mod")
-                keys_found = False
-                break
-        if not keys_found:
-            continue
+    mods = scan_mods(shared_dir)
 
     print_mods(mods)
     click.echo()
@@ -106,6 +173,9 @@ def sync(ctx, server, group):
                 "groups": {}
             }
             client_config_filepath.write_text(json.dumps(default_config), encoding="UTF-8")
+        elif not prompt_launch(ctx):
+            click.echo("Quitting...")
+            ctx.exit(1)
 
     with open(client_config_filepath, "r", encoding="UTF-8") as client_config_file:
         client_config = json.load(client_config_file)
@@ -148,7 +218,9 @@ def sync(ctx, server, group):
                 click.echo("Found an existing group")
             else:
                 click.echo(e)
-                raise click.ClickException("An error occurred while creating a new group")
+                if not prompt_launch(ctx):
+                    click.echo("Quitting...")
+                    raise click.ClickException("An error occurred while creating a new group")
     try:
         group_config = client_config["groups"][group_name]
         res = requests.put(f"{server}/groups/{group_config['name']}/{group_config['nickname']}",
@@ -163,17 +235,65 @@ def sync(ctx, server, group):
             del client_config["groups"][group_config["name"]]
             write_config(client_config_filepath, client_config)
         click.echo(e)
+        if not prompt_launch(ctx):
+            click.echo("Quitting...")
+            raise click.ClickException("An error occurred while creating a new group")
         raise click.ClickException("An error occurred while adding the user to the group")
 
     write_config(client_config_filepath, client_config)
 
     group_data = requests.get(f"{server}/groups/{group_config['name']}").json()
-    click.echo("Current group data:")
-    for user, mods in group_data.items():
-        click.echo(f"{user}:")
-        for mod_name in mods.keys():
-            have_locally = "✅" if mod_name in mods else "❌"
-            click.echo(f"\t{have_locally} {mod_name}")
+
+    to_be_downloaded, to_be_removed = show_group_info(client_config, mods, group_name, group_data)
+    
+    click.echo()
+    changes_required = False
+    if len(to_be_downloaded) > 0:
+        changes_required = True
+        click.echo("The following mods will be downloaded")
+        for mod_name in to_be_downloaded.keys():
+            click.echo(f"\t🔄 {mod_name}")
+
+    if len(to_be_removed) > 0:
+        changes_required = True
+        click.echo("The following mods will be deleted")
+        for mod_name in to_be_removed.keys():
+            click.echo(f"\t{mod_name}")
+
+    if changes_required:
+        if not click.confirm("Is this okay?") and not prompt_launch(ctx):
+            click.echo("Quitting...")
+            ctx.exit(1)
+
+    for mod_name, mod_data in to_be_downloaded.items():
+        click.echo(f"Downloading {mod_name}...")
+        current_mod_dir = shared_dir / Path("external", mod_data["id"])
+        current_mod_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            guiltysync.download_mod(current_mod_dir, mod_data["id"])
+        except click.ClickException as e:
+            click.echo(e)
+            if not click.confirm("An error occurred while downloading this mod. Do you want to skip it?") and not prompt_launch(ctx):
+                click.echo("Quitting...")
+                ctx.exit(1)
+    
+    for mod_name, mod_data in to_be_removed.items():
+        click.echo(f"Deleting {mod_name}...")
+        for file_ in mod_data["parent_dir"].glob(f"{mod_name}*"):
+            if file_.is_file():
+                click.echo(f"\tDeleting {file_}...")
+                file_.unlink()
+        if len(list(mod_data["parent_dir"].glob("*"))) == 0:
+            click.echo(f"\tDeleting {mod_data['parent_dir']}...")
+            mod_data["parent_dir"].unlink()
+
+    if changes_required:  # Don't print list again unless something happened
+        mods = scan_mods(shared_dir)
+        show_group_info(client_config, mods, group_name, group_data)
+
+    if not prompt_launch(ctx, success=True):
+        click.echo("Quitting...")
+        ctx.exit(0)
 
 
 cli.add_command(server)
