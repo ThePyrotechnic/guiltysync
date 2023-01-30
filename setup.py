@@ -38,4 +38,5 @@ setup(
             "guiltysync = guiltysync.scripts:cli",
         ],
     },
+    console=["guiltysync/scripts/__init__.py"],
 )

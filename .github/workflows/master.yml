@@ -16,3 +16,9 @@ jobs:
     - run: "pip install py2exe"
     - run: "pip install -e .[dev]"
     - run: "python setup.py py2exe"
+
+    - name: Store py2exe output
+        uses: actions/upload-artifact@v3
+        with:
+          name: py2exe-output
+          path: dist/*
