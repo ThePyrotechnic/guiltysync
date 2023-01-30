@@ -14,7 +14,7 @@ jobs:
         cache: "pip"
         cache-dependency-path: setup.py
     - run: "pip install -e .[exe]"
-    - run: "pyinstaller --onefile -n guiltysync guiltysync/scripts/__init__.py"
+    - run: "pyinstaller --additional-hooks-dir pyinstaller-hooks --onefile -n guiltysync guiltysync/scripts/__init__.py"
 
     - name: Store pyinstaller output
       uses: actions/upload-artifact@v3
