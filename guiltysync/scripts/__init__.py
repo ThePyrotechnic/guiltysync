@@ -19,7 +19,7 @@ import webbrowser
 
 import click
 import requests
-from requests import HTTPError
+from requests import HTTPError, ConnectionError
 
 import guiltysync
 from guiltysync.scripts.server import server 
@@ -31,10 +31,7 @@ def print_mods(mods):
 
 
 def check_server(server):
-    try:
-        requests.get(server).raise_for_status()
-    except HTTPError:
-        raise click.ClickException("Unable to reach sync server")
+    requests.get(server).raise_for_status()
 
 
 def print_list_options(l):
@@ -176,7 +173,8 @@ def handle_mods(server, shared_dir, client_config, mods, group_config):
 @click.group(invoke_without_command=True)
 @click.pass_context
 def cli(ctx):
-    ctx.forward(sync)
+    if ctx.invoked_subcommand is None:
+        ctx.forward(sync)
 
 
 @click.option("--game-dir", default=None)
@@ -238,7 +236,14 @@ def sync(game_dir, server):
     print_mods(mods)
     click.echo()
 
-    check_server(server)
+    try:
+        check_server(server)
+    except (HTTPError, ConnectionError) as e:
+        click.echo(e)
+        click.echo("Unable to reach sync server")
+        if not prompt_launch():
+            click.echo("Quitting...")
+            raise click.ClickException("Unable to reach sync server")
 
     group_is_new = False
     groups = list(client_config["groups"].keys())
