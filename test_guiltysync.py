@@ -22,7 +22,7 @@ from guiltysync.scripts import cli
 
 
 GAME_DIR = "/mnt/storage/SteamLibrary/steamapps/common/GUILTY GEAR STRIVE/"
-SERVER = "http://localhost:6969"
+SERVER = "http://localhost:5000"
 
 
 def rm_config():
@@ -196,9 +196,23 @@ def test_multiple_users():
 
 
 if __name__ == "__main__":
-    test_new_group()
-    test_existing()
-    test_new_with_existing()
-    test_new_local_group_exists_on_remote()
-    test_add_same_group_twice()
-    test_multiple_users()
+    # test_new_group()
+    # test_existing()
+    # test_new_with_existing()
+    # test_new_local_group_exists_on_remote()
+    # test_add_same_group_twice()
+    # test_multiple_users()
+    requests.put(f"{SERVER}/groups/test/steve", json=
+        {
+            "member": "steve",
+            "mods": {
+                "Strapped Jack-O Thigh Highs": {
+                    "name": "Strapped Jack-O Thigh Highs", "id": "903027"
+                },
+                "Celestial Sin Particles": {
+                    "name": "Celestial Sin Particles",
+                    "id": "928161"
+                }
+            }
+        }
+    )

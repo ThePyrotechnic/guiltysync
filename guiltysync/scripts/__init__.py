@@ -119,6 +119,60 @@ def show_group_info(client_config, mods, group_name, group_data):
     return to_be_downloaded, to_be_removed
 
 
+def handle_mods(server, shared_dir, client_config, mods, group_config):
+    group_data = requests.get(f"{server}/groups/{group_config['name']}").json()
+
+    to_be_downloaded, to_be_removed = show_group_info(client_config, mods, group_config['name'], group_data)
+    
+    click.echo()
+    changes_required = False
+    if len(to_be_downloaded) > 0:
+        changes_required = True
+        click.echo("The following mods will be downloaded")
+        for mod_name in to_be_downloaded.keys():
+            click.echo(f"\t🔄 {mod_name}")
+
+    if len(to_be_removed) > 0:
+        changes_required = True
+        click.echo("The following mods will be deleted")
+        for mod_name in to_be_removed.keys():
+            click.echo(f"\t{mod_name}")
+
+    if changes_required:
+        if not click.confirm("Is this okay?") and not prompt_launch(ctx):
+            click.echo("Quitting...")
+            ctx.exit(1)
+
+    for mod_name, mod_data in to_be_downloaded.items():
+        click.echo(f"Downloading {mod_name}...")
+        current_mod_dir = shared_dir / Path("external", mod_data["id"])
+        current_mod_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            guiltysync.download_mod(current_mod_dir, mod_data["id"])
+        except click.ClickException as e:
+            click.echo(e)
+            if not click.confirm("An error occurred while downloading this mod. Do you want to skip it?") and not prompt_launch(ctx):
+                click.echo("Quitting...")
+                ctx.exit(1)
+    
+    for mod_name, mod_data in to_be_removed.items():
+        click.echo(f"Deleting {mod_name}...")
+        for file_ in mod_data["parent_dir"].glob(f"{mod_name}*"):
+            if file_.is_file():
+                click.echo(f"\tDeleting {file_}...")
+                file_.unlink()
+        if len(list(mod_data["parent_dir"].glob("*"))) == 0:
+            click.echo(f"\tDeleting {mod_data['parent_dir']}...")
+            mod_data["parent_dir"].unlink()
+
+    if changes_required:  # Don't print list again unless something happened
+        mods = scan_mods(shared_dir)
+        show_group_info(client_config, mods, group_config['name'], group_data)
+    
+    return mods
+
+
+
 @click.option("--dir")
 @click.group()
 @click.pass_context
@@ -191,8 +245,7 @@ def sync(ctx, server, group):
         while True:
             click.echo("Choose a group:")
             print_list_options(groups)
-            choice = click.prompt("Choose an option", type=int)
-            choice -= 1
+            choice = click.prompt("Choose an option", type=int) - 1
             if choice == len(groups) - 1:
                 group_is_new = True
                 group_name = click.prompt("Enter a group name")
@@ -242,58 +295,16 @@ def sync(ctx, server, group):
 
     write_config(client_config_filepath, client_config)
 
-    group_data = requests.get(f"{server}/groups/{group_config['name']}").json()
+    mods = handle_mods(server, shared_dir, client_config, mods, group_config)
 
-    to_be_downloaded, to_be_removed = show_group_info(client_config, mods, group_name, group_data)
-    
-    click.echo()
-    changes_required = False
-    if len(to_be_downloaded) > 0:
-        changes_required = True
-        click.echo("The following mods will be downloaded")
-        for mod_name in to_be_downloaded.keys():
-            click.echo(f"\t🔄 {mod_name}")
-
-    if len(to_be_removed) > 0:
-        changes_required = True
-        click.echo("The following mods will be deleted")
-        for mod_name in to_be_removed.keys():
-            click.echo(f"\t{mod_name}")
-
-    if changes_required:
-        if not click.confirm("Is this okay?") and not prompt_launch(ctx):
-            click.echo("Quitting...")
-            ctx.exit(1)
-
-    for mod_name, mod_data in to_be_downloaded.items():
-        click.echo(f"Downloading {mod_name}...")
-        current_mod_dir = shared_dir / Path("external", mod_data["id"])
-        current_mod_dir.mkdir(parents=True, exist_ok=True)
-        try:
-            guiltysync.download_mod(current_mod_dir, mod_data["id"])
-        except click.ClickException as e:
-            click.echo(e)
-            if not click.confirm("An error occurred while downloading this mod. Do you want to skip it?") and not prompt_launch(ctx):
-                click.echo("Quitting...")
-                ctx.exit(1)
-    
-    for mod_name, mod_data in to_be_removed.items():
-        click.echo(f"Deleting {mod_name}...")
-        for file_ in mod_data["parent_dir"].glob(f"{mod_name}*"):
-            if file_.is_file():
-                click.echo(f"\tDeleting {file_}...")
-                file_.unlink()
-        if len(list(mod_data["parent_dir"].glob("*"))) == 0:
-            click.echo(f"\tDeleting {mod_data['parent_dir']}...")
-            mod_data["parent_dir"].unlink()
-
-    if changes_required:  # Don't print list again unless something happened
-        mods = scan_mods(shared_dir)
-        show_group_info(client_config, mods, group_name, group_data)
-
-    if not prompt_launch(ctx, success=True):
-        click.echo("Quitting...")
-        ctx.exit(0)
+    while True:
+        print_list_options(["Refresh...", "Launch GGST"])
+        choice = click.prompt("Choose an option", type=int) - 1
+        if choice == 0:
+            mods = handle_mods(server, shared_dir, client_config, mods, group_config)
+        elif choice == 1:
+            launch_game()
+            ctx.exit(0)
 
 
 cli.add_command(server)
