@@ -99,9 +99,9 @@ def show_group_info(client_config, mods, group_name, group_data):
                     del to_be_removed[mod_name]
                 except KeyError:
                     pass
-                status = "✅"
+                status = "✅[HAVE]"
             else:
-                status = "🔄"
+                status = "🔄[NEED]"
                 to_be_downloaded[mod_name] = mod_data
 
             click.echo(f"\t{status} {mod_name}")
@@ -109,9 +109,9 @@ def show_group_info(client_config, mods, group_name, group_data):
     click.echo(f"{client_config['groups'][group_name]['nickname']}:")
     for mod_name in mods.keys():
         if mod_name in to_be_removed.keys():
-            click.echo(f"\t❌ {mod_name}")
+            click.echo(f"\t❌[DELETE] {mod_name}")
         else:
-            click.echo(f"\t✅ {mod_name}")
+            click.echo(f"\t✅[HAVE] {mod_name}")
 
     return to_be_downloaded, to_be_removed
 
@@ -127,7 +127,7 @@ def handle_mods(server, shared_dir, client_config, mods, group_config):
         changes_required = True
         click.echo("The following mods will be downloaded")
         for mod_name in to_be_downloaded.keys():
-            click.echo(f"\t🔄 {mod_name}")
+            click.echo(f"\t🔄[NEED] {mod_name}")
 
     if len(to_be_removed) > 0:
         changes_required = True
