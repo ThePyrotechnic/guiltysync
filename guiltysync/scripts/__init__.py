@@ -51,10 +51,10 @@ def launch_game():
     webbrowser.open("steam://run/1384160")
 
 
-def prompt_launch(ctx, success = False):
+def prompt_launch(success = False):
     if click.confirm(f"Do you want to launch the game{'' if success else ' anyway'}?"):
         launch_game()
-        ctx.exit(0)
+        exit(0)
     return False
 
 
@@ -139,9 +139,9 @@ def handle_mods(server, shared_dir, client_config, mods, group_config):
             click.echo(f"\t{mod_name}")
 
     if changes_required:
-        if not click.confirm("Is this okay?") and not prompt_launch(ctx):
+        if not click.confirm("Is this okay?") and not prompt_launch():
             click.echo("Quitting...")
-            ctx.exit(1)
+            exit(1)
 
     for mod_name, mod_data in to_be_downloaded.items():
         click.echo(f"Downloading {mod_name}...")
@@ -151,9 +151,9 @@ def handle_mods(server, shared_dir, client_config, mods, group_config):
             guiltysync.download_mod(current_mod_dir, mod_data["id"])
         except click.ClickException as e:
             click.echo(e)
-            if not click.confirm("An error occurred while downloading this mod. Do you want to skip it?") and not prompt_launch(ctx):
+            if not click.confirm("An error occurred while downloading this mod. Do you want to skip it?") and not prompt_launch():
                 click.echo("Quitting...")
-                ctx.exit(1)
+                exit(1)
     
     for mod_name, mod_data in to_be_removed.items():
         click.echo(f"Deleting {mod_name}...")
@@ -173,45 +173,65 @@ def handle_mods(server, shared_dir, client_config, mods, group_config):
 
 
 
-@click.option("--dir")
-@click.group()
+@click.group(invoke_without_command=True)
 @click.pass_context
-def cli(ctx, dir):
-    # ensure that ctx.obj exists and is a dict (in case `cli()` is called
-    # by means other than the `if` block below)
-    ctx.ensure_object(dict)
-
-    ctx.obj["DIR"] = dir
+def cli(ctx):
+    ctx.forward(sync)
 
 
-@click.argument("server")
-@click.option("--group", "-g")
+@click.option("--game-dir", default=None)
+@click.option("--server", default=None)
 @cli.command()
-@click.pass_context
-def sync(ctx, server, group):
-    game_dir = Path(ctx.obj["DIR"])
+def sync(game_dir, server):
+    client_config_filepath = Path("guiltysync.json")
+    if (not client_config_filepath.exists()):
+        if (click.confirm("GuiltySync config was not found. Create one now?")):
+            default_config = {
+                "groups": {},
+                "defaults": {}
+            }
+            client_config_filepath.write_text(json.dumps(default_config), encoding="UTF-8")
+        elif not prompt_launch():
+            click.echo("Quitting...")
+            exit(1)
+
+    with open(client_config_filepath, "r", encoding="UTF-8") as client_config_file:
+        client_config = json.load(client_config_file)
+
+    game_dir = client_config["defaults"].get("game_dir")
+    if game_dir is None:
+        game_dir = click.prompt("Input your game directory (The folder with GGST.exe in it)")
+    game_dir = Path(game_dir)
+    client_config["defaults"]["game_dir"] = game_dir.as_posix()
+
+    server = client_config["defaults"].get("server")
+    if server is None:
+        server = click.prompt("Input the sync server that you want to connect to")
+    client_config["defaults"]["server"] = server
     
+    write_config(client_config_filepath, client_config)
+
     mod_root = game_dir / Path("RED", "Content", "Paks")
     if (not mod_root.exists()):
         click.echo("Invalid game directory")
-        if not prompt_launch(ctx):
+        if not prompt_launch():
             raise click.ClickException("Invalid game directory")
 
     mod_dir = mod_root / Path("~mods")    
     if (not mod_dir.exists()):
         if(click.confirm("Mod folder does not exist (~mods). Do you want to create it?")):
             mod_dir.mkdir()
-        elif not prompt_launch(ctx):
+        elif not prompt_launch():
             click.echo("Quitting...")
-            ctx.exit(1)
+            exit(1)
     
     shared_dir = mod_dir / Path("shared")
     if (not shared_dir.exists()):
         if (click.confirm("shared folder does not exist (~mods/shared). Do you want to create it?")):
             shared_dir.mkdir()
-        elif not prompt_launch(ctx):
+        elif not prompt_launch():
             click.echo("Quitting...")
-            ctx.exit(1)
+            exit(1)
 
     mods = scan_mods(shared_dir)
 
@@ -219,20 +239,6 @@ def sync(ctx, server, group):
     click.echo()
 
     check_server(server)
-
-    client_config_filepath = shared_dir / Path("guiltysync.json")
-    if (not client_config_filepath.exists()):
-        if (click.confirm("GuiltySync config was not found. Create one now?")):
-            default_config = {
-                "groups": {}
-            }
-            client_config_filepath.write_text(json.dumps(default_config), encoding="UTF-8")
-        elif not prompt_launch(ctx):
-            click.echo("Quitting...")
-            ctx.exit(1)
-
-    with open(client_config_filepath, "r", encoding="UTF-8") as client_config_file:
-        client_config = json.load(client_config_file)
 
     group_is_new = False
     groups = list(client_config["groups"].keys())
@@ -262,7 +268,7 @@ def sync(ctx, server, group):
             res = requests.post(f"{server}/groups/{group_name}",
                 json={
                     "member": nickname,
-                    "mods": {mod_name: {"name": mod_name, "id": data["id"]} for mod_name, data in mods.items()}
+                    "mods": {mod_name: {"name": mod_name, "id": data["id"]} for mod_name, data in mods.items() if data["external"] is False}
                 }
             )
             res.raise_for_status()
@@ -271,7 +277,7 @@ def sync(ctx, server, group):
                 click.echo("Found an existing group")
             else:
                 click.echo(e)
-                if not prompt_launch(ctx):
+                if not prompt_launch():
                     click.echo("Quitting...")
                     raise click.ClickException("An error occurred while creating a new group")
     try:
@@ -279,7 +285,7 @@ def sync(ctx, server, group):
         res = requests.put(f"{server}/groups/{group_config['name']}/{group_config['nickname']}",
             json={
                 "member": group_config["nickname"],
-                "mods": {mod_name: {"name": mod_name, "id": data["id"]} for mod_name, data in mods.items()}
+                "mods": {mod_name: {"name": mod_name, "id": data["id"]} for mod_name, data in mods.items() if data["external"] is False}
             }
         )
         res.raise_for_status()
@@ -288,7 +294,7 @@ def sync(ctx, server, group):
             del client_config["groups"][group_config["name"]]
             write_config(client_config_filepath, client_config)
         click.echo(e)
-        if not prompt_launch(ctx):
+        if not prompt_launch():
             click.echo("Quitting...")
             raise click.ClickException("An error occurred while creating a new group")
         raise click.ClickException("An error occurred while adding the user to the group")
@@ -304,7 +310,7 @@ def sync(ctx, server, group):
             mods = handle_mods(server, shared_dir, client_config, mods, group_config)
         elif choice == 1:
             launch_game()
-            ctx.exit(0)
+            exit(0)
 
 
 cli.add_command(server)
