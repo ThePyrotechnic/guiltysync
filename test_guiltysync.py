@@ -66,6 +66,7 @@ def test_new_group():
             ]
         )
     )
+    print(result.stdout)
     assert result.exit_code == 0
 
 
@@ -190,11 +191,11 @@ def test_multiple_users():
         {
             "member": "steve",
             "mods": {
-                "Strapped Jack-O Thigh Highs": {
+                "903027": {
                     "name": "Strapped Jack-O Thigh Highs",
                     "id": "903027"
                 },
-                "Maskless Jack-O v1.2": {
+                "654361": {
                     "name": "Maskless Jack-O v1.2",
                     "id": "654361"
                 }

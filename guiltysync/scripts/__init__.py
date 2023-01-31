@@ -28,7 +28,7 @@ from guiltysync.scripts.server import server
 
 def print_mods(mods):
     click.echo("Your mods:")
-    [click.echo(f"\t{key}") for key in mods.keys()]
+    [click.echo(f"\t{data['name']}") for data in mods.values()]
 
 
 def check_server(server):
@@ -39,7 +39,7 @@ def create_group(server, group_name, nickname, mods):
     res = requests.post(f"{server}/groups/{group_name}",
         json={
             "member": nickname,
-            "mods": {mod_name: {"name": mod_name, "id": data["id"]} for mod_name, data in mods.items() if data["external"] is False}
+            "mods": {data["id"]: {"name": data["name"], "id": data["id"]} for data in mods.values() if data["external"] is False}
         }
     )
     res.raise_for_status()
@@ -49,7 +49,7 @@ def update_user(server, group_config, mods):
     res = requests.put(f"{server}/groups/{group_config['name']}/{group_config['nickname']}",
         json={
             "member": group_config["nickname"],
-            "mods": {mod_name: {"name": mod_name, "id": data["id"]} for mod_name, data in mods.items() if data["external"] is False}
+            "mods": {data["id"]: {"name": data["name"], "id": data["id"]} for data in mods.values() if data["external"] is False}
         }
     )
     res.raise_for_status()
@@ -81,6 +81,7 @@ def scan_mods(game_dir, shared_dir):
 
     for file_ in shared_dir.glob("**/*"):
         if file_.suffix == ".pak":
+            mods[file_.stem]["name"] = file_.stem
             mods[file_.stem]["parent_dir"] = file_.parent
             mods[file_.stem]["external"] = file_.parts[-3] == "external"
             mods[file_.stem]["pak"] = file_
@@ -111,36 +112,41 @@ def scan_mods(game_dir, shared_dir):
     for invalid_mod in invalid_mods:
         del mods[invalid_mod]
     
-    return mods
+    # Very lazy method of doing this (could integrate into first scan)
+    mods_by_id = {}
+    for mod_name, mod_info in mods.items():
+        mods_by_id[mod_info["id"]] = mod_info
+
+    return mods_by_id
 
 
 def show_group_info(client_config, mods, group_name, group_data):
     to_be_downloaded = {}
-    to_be_removed = {mod_name: mod_data for mod_name, mod_data in mods.items() if mod_data["external"]}
+    to_be_removed = {mod_id: mod_data for mod_id, mod_data in mods.items() if mod_data["external"]}
     click.echo("Current group data:")
     for user, their_mods in group_data.items():
         if user == client_config["groups"][group_name]["nickname"]:
             continue
         click.echo(f"{user}:")
-        for mod_name, mod_data in their_mods.items():
-            if mod_name in mods:
+        for mod_id, mod_data in their_mods.items():
+            if mod_id in mods:
                 try:
-                    del to_be_removed[mod_name]
+                    del to_be_removed[mod_id]
                 except KeyError:
                     pass
                 status = "✅[HAVE]"
             else:
                 status = "🔄[NEED]"
-                to_be_downloaded[mod_name] = mod_data
+                to_be_downloaded[mod_id] = mod_data
 
-            click.echo(f"\t{status} {mod_name}")
+            click.echo(f"\t{status} {mod_data['mod_name']}")
 
     click.echo(f"{client_config['groups'][group_name]['nickname']}:")
-    for mod_name in mods.keys():
-        if mod_name in to_be_removed.keys():
-            click.echo(f"\t❌[DELETE] {mod_name}")
+    for mod_id, mod_data in mods.items():
+        if mod_id in to_be_removed.keys():
+            click.echo(f"\t❌[DELETE] {mod_data['name']}")
         else:
-            click.echo(f"\t✅[HAVE] {mod_name}")
+            click.echo(f"\t✅[HAVE] {mod_data['name']}")
 
     return to_be_downloaded, to_be_removed
 
@@ -155,22 +161,22 @@ def handle_mods(server, game_dir, shared_dir, client_config, mods, group_config)
     if len(to_be_downloaded) > 0:
         changes_required = True
         click.echo("The following mods will be downloaded")
-        for mod_name in to_be_downloaded.keys():
-            click.echo(f"\t🔄[NEED] {mod_name}")
+        for mod_data in to_be_downloaded.values():
+            click.echo(f"\t🔄[NEED] {mod_data['name']}")
 
     if len(to_be_removed) > 0:
         changes_required = True
         click.echo("The following mods will be deleted")
-        for mod_name in to_be_removed.keys():
-            click.echo(f"\t{mod_name}")
+        for mod_data in to_be_removed.values():
+            click.echo(f"\t{mod_data['name']}")
 
     if changes_required:
         if not click.confirm("Is this okay?") and not prompt_launch():
             click.echo("Quitting...")
             exit(1)
 
-    for mod_name, mod_data in to_be_downloaded.items():
-        click.echo(f"Downloading {mod_name}...")
+    for mod_data in to_be_downloaded.values():
+        click.echo(f"Downloading {mod_data['name']}...")
         current_mod_dir = shared_dir / Path("external", mod_data["id"])
         current_mod_dir.mkdir(parents=True, exist_ok=True)
         try:
@@ -181,9 +187,9 @@ def handle_mods(server, game_dir, shared_dir, client_config, mods, group_config)
                 click.echo("Quitting...")
                 exit(1)
     
-    for mod_name, mod_data in to_be_removed.items():
-        click.echo(f"Deleting {mod_name}...")
-        for file_ in mod_data["parent_dir"].glob(f"{mod_name}*"):
+    for mod_data in to_be_removed.values():
+        click.echo(f"Deleting {mod_data['name']}...")
+        for file_ in mod_data["parent_dir"].glob(f"{mod_data['name']}*"):
             if file_.is_file():
                 click.echo(f"\tDeleting {file_}...")
                 file_.unlink()
