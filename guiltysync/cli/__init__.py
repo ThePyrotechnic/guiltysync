@@ -559,7 +559,7 @@ def cli(ctx):
 @cli.command()
 def sync(config, game_dir, server, version_check):
     try:
-        client = SyncClient("1.1.2", Path(config), game_dir, server)
+        client = SyncClient("1.1.0", Path(config), game_dir, server)
 
         if version_check:
             client.check_for_update()
