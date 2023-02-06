@@ -4,18 +4,15 @@ Sync Guilty Gear Strive mods between friends
 
 ## Installation
 
-### Windows
+### Windows (tested with Proton)
 
-Grab the .exe from the latest [Release](https://github.com/ThePyrotechnic/guiltysync/releases)
-
-### Linux / Python native
-
-First clone the repository. Then:
-
-```
-pip install .
-guiltysync <command>
-```
+1. Download `guiltysync.exe` from the latest [Release](https://github.com/ThePyrotechnic/guiltysync/releases)
+2. Go to your game's installation directory
+    1. From Steam, right-click `GUILTY GEAR -STRIVE-` in your library and click `Properties...`
+    2. Click `LOCAL FILES`
+    3. Click `Browse...`
+3. Rename `GGST.exe` to `strive.exe`
+4. Place `guiltysync.exe` in your game directory and rename it to `GGST.exe`
 
 # Running
 
