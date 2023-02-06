@@ -37,12 +37,13 @@ def get_mod_details(mod_id, mod_category=None):
             else "Mod"
         )
 
-    res = requests.get(
-        f"https://gamebanana.com/apiv10/{mod_category}/{mod_id}/ProfilePage"
-    )
     try:
+        res = requests.get(
+            f"https://gamebanana.com/apiv10/{mod_category}/{mod_id}/ProfilePage",
+            timeout=3,
+        )
         res.raise_for_status()
-    except requests.exceptions.HTTPError:
+    except (requests.exceptions.HTTPError, requests.exceptions.Timeout):
         raise ModNotFound()
 
     return res.json()
@@ -58,30 +59,44 @@ def search_for_mod(search_string, mod_category=None):
             else "Mod"
         )
 
-    params = {
-        "_nPage": 1,
-        "_nPerPage": 10,
-        "_sModelName": mod_category,
-        "sOrder": "best_match",
-        "idGameRow": "11534",
-        "_sSearchString": search_string,
-        "_csvFields": "name,owner",
-    }
+    while True:
+        try:
+            params = {
+                "_nPage": 1,
+                "_nPerPage": 10,
+                "_sModelName": mod_category,
+                "sOrder": "best_match",
+                "idGameRow": "11534",
+                "_sSearchString": search_string,
+                "_csvFields": "name,owner",
+            }
+            click.echo(f"Search results for '{search_string}'")
+            try:
+                res = requests.get(
+                    "https://gamebanana.com/apiv10/Util/Search/Results",
+                    params=params,
+                    timeout=3,
+                ).json()
+            except (requests.exceptions.HTTPError, requests.exceptions.Timeout):
+                raise ModNotFound()
 
-    res = requests.get(
-        "https://gamebanana.com/apiv10/Util/Search/Results", params=params
-    ).json()
-
-    try:
-        return helpers.choose_from_list(
-            res["_aRecords"],
-            display_fn=lambda x: x["_sName"],
-            prompt="Choose a mod",
-            cancellable=True,
-            cancel_prompt="Mod not listed...",
-        )
-    except helpers.ChoiceCancelledException:
-        raise ModNotFound()
+            return helpers.choose_from_list(
+                res["_aRecords"],
+                display_fn=lambda x: x["_sName"],
+                prompt="Choose a mod",
+                cancellable=True,
+                cancel_prompt="Mod not listed...",
+            )
+        except helpers.ChoiceCancelledException:
+            try:
+                helpers.choose_from_list(
+                    ["Change the search term"],
+                    cancel_prompt="Cancel online search...",
+                    cancellable=True,
+                )
+                search_string = click.prompt("Enter a new search term")
+            except helpers.ChoiceCancelledException:
+                raise ModNotFound()
 
 
 def download_mod(target_dir: Path, mod_data):
@@ -96,7 +111,7 @@ def download_mod(target_dir: Path, mod_data):
 
     download_url = f"https://gamebanana.com/dl/{mod_data['download_id']}"
 
-    res = requests.get(download_url)
+    res = requests.get(download_url, timeout=3)
     res.raise_for_status()
 
     assert res.request.url is not None

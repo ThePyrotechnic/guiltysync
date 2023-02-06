@@ -22,11 +22,14 @@ import webbrowser
 import click
 from packaging import version as versionLib
 import requests
-from requests import HTTPError
 
 import guiltysync
 import guiltysync.helpers as helpers
 from guiltysync.cli.server import server
+
+
+class ServerFailureError(BaseException):
+    pass
 
 
 class SyncClient:
@@ -48,11 +51,21 @@ class SyncClient:
         if server is None:
             server = self.config["defaults"].get("server")
             if server is None:
-                server = click.prompt(
-                    "Input the sync server that you want to connect to"
-                )
+                while True:
+                    server = click.prompt(
+                        "Input the sync server that you want to connect to"
+                    )
+                    server = server.strip(" /")
+                    if server.startswith("http"):
+                        break
+                    click.echo("Server address should start with 'http'")
         self.server = server
         self.config["defaults"]["server"] = server
+
+        try:
+            self.check_server()
+        except requests.exceptions.RequestException:
+            raise ServerFailureError()
 
         self.selected_group: dict = None  # type: ignore
         if self.default_group is not None:
@@ -61,8 +74,6 @@ class SyncClient:
         self.write_config()
 
         self.check_directories()
-
-        self.check_server()
 
         self.scan_mods()
 
@@ -116,15 +127,16 @@ class SyncClient:
             self.external_dir.mkdir()
 
     def check_for_update(self):
-        github_res = requests.get(
-            "https://api.github.com/repos/ThePyrotechnic/guiltysync/releases",
-            params={"per_page": 1},
-        )
-
         try:
+            github_res = requests.get(
+                "https://api.github.com/repos/ThePyrotechnic/guiltysync/releases",
+                params={"per_page": 1},
+                timeout=3,
+            )
             github_res.raise_for_status()
-        except HTTPError:
+        except requests.exceptions.RequestException:
             click.echo("Failed to check for updates")
+            return
 
         release_info = github_res.json()[0]
 
@@ -139,14 +151,16 @@ class SyncClient:
             if click.confirm(
                 f"A new version is available: {release_version} (You have {self.version}). Would you like to update?"
             ):
-                dl_res = requests.get(
-                    release_info["assets"][0]["url"],
-                    headers={"Accept": "application/octet-stream"},
-                )
                 try:
+                    dl_res = requests.get(
+                        release_info["assets"][0]["url"],
+                        headers={"Accept": "application/octet-stream"},
+                        timeout=3,
+                    )
                     dl_res.raise_for_status()
-                except HTTPError:
+                except requests.exceptions.RequestException:
                     click.echo("Failed to download update")
+                    return
 
                 target_filepath = Path(f"guiltysync{release_version}.exe")
                 with open(target_filepath, "wb") as exe_file:
@@ -168,35 +182,45 @@ class SyncClient:
                 exit(1)
 
     def check_server(self):
-        requests.get(self.server).raise_for_status()
+        requests.get(self.server, timeout=3).raise_for_status()
 
     def create_group(self):
         while True:
             group_name = click.prompt("Enter a group name to join or create a group")
             method = "PUT"
             try:
-                requests.get(f"{self.server}/groups/{group_name}").raise_for_status()
-            except HTTPError:
-                method = "POST"  # Creating a new group
-                if not click.confirm(
-                    f"Group '{group_name}' not found. Would you like to create it?"
-                ):
-                    continue
+                requests.get(
+                    f"{self.server}/groups/{group_name}", timeout=3
+                ).raise_for_status()
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 404:
+                    method = "POST"  # Creating a new group
+                    if not click.confirm(
+                        f"Group '{group_name}' not found. Would you like to create it?"
+                    ):
+                        continue
+                else:
+                    raise ServerFailureError(e)
+            except requests.exceptions.RequestException as e:
+                raise ServerFailureError(e)
 
             nickname = click.prompt("Enter a nickname for yourself in this group")
-
-            requests.request(
-                method,
-                f"{self.server}/groups/{group_name}/{nickname if method == 'PUT' else ''}",
-                json={
-                    "member": nickname,
-                    "mods": {
-                        data["id"]: {"name": data["name"], "id": data["id"]}
-                        for data in self.mods.values()
-                        if data["external"] is False
+            try:
+                requests.request(
+                    method,
+                    f"{self.server}/groups/{group_name}/{nickname if method == 'PUT' else ''}",
+                    json={
+                        "member": nickname,
+                        "mods": {
+                            data["id"]: {"name": data["name"], "id": data["id"]}
+                            for data in self.mods.values()
+                            if data["external"] is False
+                        },
                     },
-                },
-            ).raise_for_status()
+                    timeout=3,
+                ).raise_for_status()
+            except requests.exceptions.RequestException as e:
+                raise ServerFailureError(e)
             break
         self.groups = self.groups | {
             group_name: {"group_name": group_name, "nickname": nickname}
@@ -381,9 +405,7 @@ class SyncClient:
                     )
                     if choice == choices[0]:
                         try:
-                            click.echo(
-                                f"ID not found for '{mod_info['filename']}'. Searching online..."
-                            )
+                            click.echo(f"Searching online...")
                             online_mod_info = guiltysync.search_for_mod(
                                 mod_info["filename"]
                             )
@@ -474,28 +496,36 @@ class SyncClient:
     def sync_status_with_group(self):
         self.update_user()
 
-        group_data_res = requests.get(
-            f"{self.server}/groups/{self.selected_group['group_name']}"
-        )
-        group_data_res.raise_for_status()
+        try:
+            group_data_res = requests.get(
+                f"{self.server}/groups/{self.selected_group['group_name']}", timeout=3
+            )
+            group_data_res.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            raise ServerFailureError(e)
+
         self.group_data = group_data_res.json()
 
     def update_user(self):
-        requests.put(
-            f"{self.server}/groups/{self.selected_group['group_name']}/{self.selected_group['nickname']}",
-            json={
-                "member": self.selected_group["nickname"],
-                "mods": {
-                    data["id"]: {
-                        "name": data["name"],
-                        "id": data["id"],
-                        "download_id": data["chosen_download"],
-                    }
-                    for data in self.mods.values()
-                    if data["external"] is False
+        try:
+            requests.put(
+                f"{self.server}/groups/{self.selected_group['group_name']}/{self.selected_group['nickname']}",
+                json={
+                    "member": self.selected_group["nickname"],
+                    "mods": {
+                        data["id"]: {
+                            "name": data["name"],
+                            "id": data["id"],
+                            "download_id": data["chosen_download"],
+                        }
+                        for data in self.mods.values()
+                        if data["external"] is False
+                    },
                 },
-            },
-        ).raise_for_status()
+                timeout=3,
+            ).raise_for_status()
+        except requests.exceptions.RequestException as e:
+            raise ServerFailureError(e)
 
     def write_config(self):
         with open(self.config_filepath, "w", encoding="UTF-8") as client_config_file:
@@ -528,39 +558,52 @@ def cli(ctx):
 @click.option("--version-check/--no-version-check", default=True)
 @cli.command()
 def sync(config, game_dir, server, version_check):
-    client = SyncClient("1.0.2", Path(config), game_dir, server)
+    try:
+        client = SyncClient("1.1.2", Path(config), game_dir, server)
 
-    if version_check:
-        client.check_for_update()
+        if version_check:
+            client.check_for_update()
 
-    client.select_group()
+        client.select_group()
 
-    client.prune_external_mods()
+        client.prune_external_mods()
 
-    client.get_or_update_mods()
+        client.get_or_update_mods()
 
-    client.print_group_mods()
+        client.print_group_mods()
 
-    options = ["Refresh...", "Launch GGST", "Quit"]
-    while True:
-        choice = helpers.choose_from_list(options)
-        if choice == options[0]:
-            click.echo()
+        options = ["Refresh...", "Launch GGST", "Quit"]
+        while True:
+            choice = helpers.choose_from_list(options)
+            if choice == options[0]:
+                click.echo()
 
-            client.scan_mods()  # Must be done in case the user adds mods locally
+                client.scan_mods()  # Must be done in case the user adds mods locally
 
-            client.sync_status_with_group()
+                client.sync_status_with_group()
 
-            client.prune_external_mods()  # Must be done in case remote users delete mods
+                client.prune_external_mods()  # Must be done in case remote users delete mods
 
-            client.get_or_update_mods()
+                client.get_or_update_mods()
 
-            client.print_group_mods()
-        elif choice == options[1]:
-            client.launch_game()
-            exit(0)
-        elif choice == options[2]:
-            exit(0)
+                client.print_group_mods()
+            elif choice == options[1]:
+                client.launch_game()
+                exit(0)
+            elif choice == options[2]:
+                exit(0)
+    except ServerFailureError:
+        click.echo("Unable to communicate with sync server")
+        try:
+            helpers.choose_from_list(
+                ["Launch GGST"],
+                cancel_prompt="Quit",
+                cancellable=True,
+            )
+        except helpers.ChoiceCancelledException:
+            exit(1)
+        SyncClient.launch_game()
+        exit(0)
 
 
 cli.add_command(server)
