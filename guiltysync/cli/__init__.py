@@ -14,6 +14,7 @@ guiltysync - Sync Guilty Gear Strive mods
 """
 from collections import defaultdict
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -163,6 +164,13 @@ class SyncClient:
                 target_filepath = Path(f"guiltysync{release_version}.exe")
                 with open(target_filepath, "wb") as exe_file:
                     exe_file.write(dl_res.content)
+
+                click.echo(
+                    f"{target_filepath} has been downloaded to your game directory. Replace the old 'GGST.exe' with this one and re-launch the game"
+                )
+                click.prompt("Press enter to open the game directory")
+                os.startfile(os.getcwd())
+                sys.exit(0)
 
     def check_or_create_config(self):
         if not self.config_filepath.exists():
@@ -557,7 +565,7 @@ def cli(ctx):
 @cli.command()
 def sync(config, game_dir, server, version_check):
     try:
-        client = SyncClient("2.0.2", Path(config), game_dir, server)
+        client = SyncClient("2.0.3", Path(config), game_dir, server)
 
         if version_check:
             client.check_for_update()
