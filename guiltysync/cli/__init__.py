@@ -42,9 +42,7 @@ class SyncClient:
         if game_path is None:
             game_path = self.config["defaults"].get("game_path")
             if game_path is None:
-                game_path = click.prompt(
-                    "Input your game directory (The folder with GGST.exe in it)"
-                )
+                game_path = Path.cwd()
         self.game_filepath = Path(game_path)
         self.config["defaults"]["game_path"] = self.game_filepath.as_posix()
 
@@ -559,7 +557,7 @@ def cli(ctx):
 @cli.command()
 def sync(config, game_dir, server, version_check):
     try:
-        client = SyncClient("1.1.0", Path(config), game_dir, server)
+        client = SyncClient("2.0.0", Path(config), game_dir, server)
 
         if version_check:
             client.check_for_update()
