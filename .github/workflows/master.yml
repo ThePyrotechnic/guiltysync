@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - master
+      - exe-replace
 jobs:
   build:
     runs-on: windows-2019
