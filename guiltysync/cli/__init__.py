@@ -16,8 +16,8 @@ from collections import defaultdict
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import sys
-import webbrowser
 
 import click
 from packaging import version as versionLib
@@ -531,7 +531,7 @@ class SyncClient:
 
     @classmethod
     def launch_game(cls):
-        webbrowser.open("steam://run/1384160")
+        subprocess.Popen("strive.exe")
 
     @classmethod
     def prompt_launch(cls, success: bool = False):
@@ -557,7 +557,7 @@ def cli(ctx):
 @cli.command()
 def sync(config, game_dir, server, version_check):
     try:
-        client = SyncClient("2.0.0", Path(config), game_dir, server)
+        client = SyncClient("2.0.1", Path(config), game_dir, server)
 
         if version_check:
             client.check_for_update()
