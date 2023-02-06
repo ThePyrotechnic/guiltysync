@@ -44,7 +44,7 @@ def ping():
 
 def delete_group(group: str):
     if not group in config["groups"]:
-        raise(HTTPException(status_code=404, detail="Group not found"))
+        raise (HTTPException(status_code=404, detail="Group not found"))
     del config["groups"][group]
 
     write_config(config_filepath, config)
@@ -70,7 +70,7 @@ def post_group_member(group: str, member: str, user_data: UserData):
         config["groups"][group][member] = user_data.mods
     except KeyError:
         raise HTTPException(status_code=404, detail="Group not found")
-    
+
     write_config(config_filepath, config)
 
 
@@ -94,11 +94,12 @@ def server(host, port, config_path):
         config = json.load(config_file)
 
     app = FastAPI()
-    app.add_api_route("/", ping, methods=["GET"])
-    app.add_api_route("/groups", delete_groups, methods=["DELETE"])
-    app.add_api_route("/groups/{group}", get_group, methods=["GET"])
-    app.add_api_route("/groups/{group}", post_group, methods=["POST"])
-    app.add_api_route("/groups/{group}", delete_group, methods=["DELETE"])
-    app.add_api_route("/groups/{group}/{member}", post_group_member, methods=["PUT"])
+
+    app.add_api_route("/", ping, methods=["GET"])  # type: ignore
+    app.add_api_route("/groups", delete_groups, methods=["DELETE"])  # type: ignore
+    app.add_api_route("/groups/{group}", get_group, methods=["GET"])  # type: ignore
+    app.add_api_route("/groups/{group}", post_group, methods=["POST"])  # type: ignore
+    app.add_api_route("/groups/{group}", delete_group, methods=["DELETE"])  # type: ignore
+    app.add_api_route("/groups/{group}/{member}", post_group_member, methods=["PUT"])  # type: ignore
 
     uvicorn.run(app, host=host, port=port)

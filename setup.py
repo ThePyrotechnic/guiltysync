@@ -17,24 +17,14 @@ from setuptools import setup, find_packages
 
 setup(
     name="guiltysync",
-    version="0.12.0",
+    version="1.0.0",
     packages=find_packages(),
     include_package_data=True,
-    install_requires=[
-        "Click",
-        "requests",
-        "fastapi",
-        "uvicorn",
-        "patool",
-    ],
-    extras_require={
-        "exe": [
-            "pyinstaller"
-        ]
-    },
+    install_requires=["Click", "requests", "fastapi", "uvicorn", "patool", "packaging"],
+    extras_require={"exe": ["pyinstaller"], "dev": ["black"]},
     entry_points={
         "console_scripts": [
-            "guiltysync = guiltysync.scripts:cli",
+            "guiltysync = guiltysync.cli:cli",
         ],
     },
 )

@@ -1,4 +1,3 @@
-
 """
 guiltysync - Sync Guilty Gear Strive mods
     Copyright (C) 2023  Michael Manis - michaelmanis@tutanota.com
@@ -18,7 +17,7 @@ from pathlib import Path
 from click.testing import CliRunner
 import requests
 
-from guiltysync.scripts import cli
+from guiltysync.cli import cli
 
 
 GAME_DIR = "/mnt/storage/SteamLibrary/steamapps/common/GUILTY GEAR STRIVE/"
@@ -49,22 +48,10 @@ def test_new_group():
     rm_config()
 
     runner = CliRunner()
-    result = runner.invoke(cli,
-        [
-            "sync",
-            "--game-dir",
-            GAME_DIR,
-            "--server",
-            SERVER
-        ],
-        input = "\n".join(
-            [
-                "y",
-                "test",
-                "mike",
-                "3"
-            ]
-        )
+    result = runner.invoke(
+        cli,
+        ["sync", "--game-dir", GAME_DIR, "--server", SERVER],
+        input="\n".join(["y", "test", "mike", "3"]),
     )
     print(result.stdout)
     assert result.exit_code == 0
@@ -74,19 +61,10 @@ def test_existing_group():
     test_new_group()
 
     runner = CliRunner()
-    result = runner.invoke(cli,
-        [
-            "sync",
-            "--game-dir",
-            GAME_DIR,
-            "--server",
-            SERVER
-        ],
-        input = "\n".join(
-            [
-                "1"
-            ]
-        )
+    result = runner.invoke(
+        cli,
+        ["sync", "--game-dir", GAME_DIR, "--server", SERVER],
+        input="\n".join(["1"]),
     )
     assert result.exit_code == 0
 
@@ -94,25 +72,14 @@ def test_existing_group():
 def test_new_user_with_existing_group():
     delete_group("test2")
     rm_config()
-    
+
     test_new_group()
 
     runner = CliRunner()
-    result = runner.invoke(cli,
-        [
-            "sync",
-            "--game-dir",
-            GAME_DIR,
-            "--server",
-            SERVER
-        ],
-        input = "\n".join(
-            [
-                "2",
-                "test2",
-                "mike"
-            ]
-        )
+    result = runner.invoke(
+        cli,
+        ["sync", "--game-dir", GAME_DIR, "--server", SERVER],
+        input="\n".join(["2", "test2", "mike"]),
     )
     assert result.exit_code == 0
 
@@ -123,21 +90,10 @@ def test_new_local_group_exists_on_remote():
     rm_config()
 
     runner = CliRunner()
-    result = runner.invoke(cli,
-        [
-            "sync",
-            "--game-dir",
-            GAME_DIR,
-            "--server",
-            SERVER
-        ],
-        input = "\n".join(
-            [
-                "y",
-                "test",
-                "mike"
-            ]
-        )
+    result = runner.invoke(
+        cli,
+        ["sync", "--game-dir", GAME_DIR, "--server", SERVER],
+        input="\n".join(["y", "test", "mike"]),
     )
     assert result.exit_code == 0
 
@@ -147,60 +103,41 @@ def test_add_same_group_twice():
     test_new_group()
 
     runner = CliRunner()
-    result = runner.invoke(cli,
-        [
-            "sync",
-            "--game-dir",
-            GAME_DIR,
-            "--server",
-            SERVER
-        ],
-        input = "\n".join(
-            [
-                "2",
-                "test",
-                "mike"
-            ]
-        )
+    result = runner.invoke(
+        cli,
+        ["sync", "--game-dir", GAME_DIR, "--server", SERVER],
+        input="\n".join(["2", "test", "mike"]),
     )
-    
-    result = runner.invoke(cli,
-        [
-            "sync",
-            "--game-dir",
-            GAME_DIR,
-            "--server",
-            SERVER
-        ],
-        input = "\n".join(
-            [
-                "2",
-                "test",
-                "mike"
-            ]
-        )
+
+    result = runner.invoke(
+        cli,
+        ["sync", "--game-dir", GAME_DIR, "--server", SERVER],
+        input="\n".join(["2", "test", "mike"]),
     )
     assert result.exit_code == 0
 
 
 def test_multiple_users():
-    delete_groups()
-    test_new_group()
+    # delete_groups()
+    # test_new_group()
 
-    requests.put(f"{SERVER}/groups/test/steve", json=
-        {
+    requests.put(
+        f"{SERVER}/groups/test/steve",
+        json={
             "member": "steve",
             "mods": {
-                "903027": {
-                    "name": "Strapped Jack-O Thigh Highs",
-                    "id": "903027"
+                "415967": {
+                    "name": "Strapped Jack-O",
+                    "id": "415967",
+                    "download_id": "903027",
                 },
-                "654361": {
-                    "name": "Maskless Jack-O v1.2",
-                    "id": "654361"
-                }
-            }
-        }
+                "318321": {
+                    "name": "Maskless Jack-O",
+                    "id": "318321",
+                    "download_id": "654361",
+                },
+            },
+        },
     )
 
 

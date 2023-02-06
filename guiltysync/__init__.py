@@ -12,6 +12,7 @@ guiltysync - Sync Guilty Gear Strive mods
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
+import json
 from pathlib import Path
 import shutil
 
@@ -19,38 +20,113 @@ import click
 import patoolib
 import requests
 
-
-def get_download_url(mod_id):
-    return f"https://gamebanana.com/dl/{mod_id}"
+import guiltysync.helpers as helpers
 
 
-def download_mod(target_dir: Path, mod_id):
+class ModNotFound(Exception):
+    pass
+
+
+def get_mod_details(mod_id, mod_category=None):
+    if mod_category is None:
+        mod_category = (
+            "Sound"
+            if click.confirm(
+                "Is this a music / sound mod? (if it changes anything other than audio, answer no)"
+            )
+            else "Mod"
+        )
+
+    res = requests.get(
+        f"https://gamebanana.com/apiv10/{mod_category}/{mod_id}/ProfilePage"
+    )
+    try:
+        res.raise_for_status()
+    except requests.exceptions.HTTPError:
+        raise ModNotFound()
+
+    return res.json()
+
+
+def search_for_mod(search_string, mod_category=None):
+    if mod_category is None:
+        mod_category = (
+            "Sound"
+            if click.confirm(
+                "Is this a music / sound mod? (if it changes anything other than audio, answer no)"
+            )
+            else "Mod"
+        )
+
+    params = {
+        "_nPage": 1,
+        "_nPerPage": 10,
+        "_sModelName": mod_category,
+        "sOrder": "best_match",
+        "idGameRow": "11534",
+        "_sSearchString": search_string,
+        "_csvFields": "name,owner",
+    }
+
+    res = requests.get(
+        "https://gamebanana.com/apiv10/Util/Search/Results", params=params
+    ).json()
+
+    try:
+        return helpers.choose_from_list(
+            res["_aRecords"],
+            display_fn=lambda x: x["_sName"],
+            prompt="Choose a mod",
+            cancellable=True,
+            cancel_prompt="Mod not listed...",
+        )
+    except helpers.ChoiceCancelledException:
+        raise ModNotFound()
+
+
+def download_mod(target_dir: Path, mod_data):
     if len(list(target_dir.iterdir())) > 0:
-        if click.confirm(f"{target_dir} is not empty. Would you like to empty it? This will delete ALL files in the directory"):
+        if click.confirm(
+            f"{target_dir} is not empty. Would you like to empty it? This will delete ALL files in the directory"
+        ):
             shutil.rmtree(target_dir)
             target_dir.mkdir()
         else:
             raise click.ClickException(f"'{target_dir}' should be empty")
 
-    download_url = get_download_url(mod_id)
-    
+    download_url = f"https://gamebanana.com/dl/{mod_data['download_id']}"
+
     res = requests.get(download_url)
     res.raise_for_status()
 
+    assert res.request.url is not None
     filename = Path(res.request.url.split("/")[-1])
     target_filepath = target_dir / filename
 
     with open(target_filepath, "wb") as downloaded_file:
         downloaded_file.write(res.content)
-    
 
-    patoolib.extract_archive(target_filepath.as_posix(), outdir=target_dir.as_posix(), verbosity=0)
+    patoolib.extract_archive(
+        target_filepath.as_posix(), outdir=target_dir.as_posix(), verbosity=0
+    )
 
     for file_ in target_dir.glob("**/*"):
         if file_.suffix == ".pak":
-            mod_name = file_.stem
+            mod_filename = file_.stem
             break
     else:
         raise click.ClickException("Unable to find mod .pak in extracted files")
 
-    (target_dir / Path(f"{mod_name}.{mod_id}.id")).touch()
+    with open(
+        target_dir / Path(f"{mod_filename}.id"), "w", encoding="UTF-8"
+    ) as mod_id_file:
+        json.dump(
+            {
+                "id": mod_data["id"],
+                "name": mod_data["name"],
+                "chosen_download": mod_data["download_id"],
+            },
+            mod_id_file,
+        )
+
+    target_filepath.unlink()
