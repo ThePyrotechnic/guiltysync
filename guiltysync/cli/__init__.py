@@ -108,7 +108,7 @@ class SyncClient:
                 mod_dir.mkdir()
             elif not self.prompt_launch():
                 click.echo("Quitting...")
-                exit(1)
+                sys.exit(1)
 
         self.shared_dir = mod_dir / Path("shared")
         if not self.shared_dir.exists():
@@ -118,7 +118,7 @@ class SyncClient:
                 self.shared_dir.mkdir()
             elif not self.prompt_launch():
                 click.echo("Quitting...")
-                exit(1)
+                sys.exit(1)
 
         self.external_dir = self.shared_dir / Path(".external")
         if not self.external_dir.exists():
@@ -177,7 +177,7 @@ class SyncClient:
                 )
             elif not self.prompt_launch():
                 click.echo("Quitting...")
-                exit(1)
+                sys.exit(1)
 
     def check_server(self):
         requests.get(self.server, timeout=3).raise_for_status()
@@ -531,7 +531,7 @@ class SyncClient:
 
     @classmethod
     def launch_game(cls):
-        subprocess.Popen("strive.exe")
+        subprocess.run("strive.exe")
 
     @classmethod
     def prompt_launch(cls, success: bool = False):
@@ -539,7 +539,7 @@ class SyncClient:
             f"Do you want to launch the game{'' if success else ' anyway'}?"
         ):
             cls.launch_game()
-            exit(0)
+            sys.exit(0)
         return False
 
 
@@ -557,7 +557,7 @@ def cli(ctx):
 @cli.command()
 def sync(config, game_dir, server, version_check):
     try:
-        client = SyncClient("2.0.1", Path(config), game_dir, server)
+        client = SyncClient("2.0.2", Path(config), game_dir, server)
 
         if version_check:
             client.check_for_update()
@@ -587,9 +587,9 @@ def sync(config, game_dir, server, version_check):
                 client.print_group_mods()
             elif choice == options[1]:
                 client.launch_game()
-                exit(0)
+                sys.exit(0)
             elif choice == options[2]:
-                exit(0)
+                sys.exit(0)
     except ServerFailureError:
         click.echo("Unable to communicate with sync server")
         try:
@@ -599,9 +599,9 @@ def sync(config, game_dir, server, version_check):
                 cancellable=True,
             )
         except helpers.ChoiceCancelledException:
-            exit(1)
+            sys.exit(1)
         SyncClient.launch_game()
-        exit(0)
+        sys.exit(0)
 
 
 cli.add_command(server)
