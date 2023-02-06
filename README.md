@@ -18,7 +18,7 @@ Sync Guilty Gear Strive mods between friends
 
 ## The client
 
-If you do not have any mods and you only want to download your friends' mods, then you do not need to do anything and you can run the client. It will walk you through the initial configuration
+If you do not have any mods and you only want to download your friends' mods, then you do not need to do anything and you can run start Guilty Gear normally. It will walk you through the initial configuration
 
 If you have mods that you want to share, then you must move them into the correct folder. First you should run the program once to create any missing files / folders, then follow the steps below
 
